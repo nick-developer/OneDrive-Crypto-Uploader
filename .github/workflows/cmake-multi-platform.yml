@@ -5,7 +5,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Optional: cancel older runs for the same branch/PR.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,112 +23,65 @@ jobs:
         build_type: [Release]
 
     env:
+      QT_VERSION: "6.8.3"
       BUILD_DIR: build/${{ matrix.os }}-${{ matrix.build_type }}
-      QT_VERSION: "6.8.3" # install-qt-action default is Qt 6 LTS; pin to keep CI stable. 【1-0e753b】
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- Platform prerequisites ----------
-      - name: Install build prerequisites (Ubuntu)
+      # --------------------
+      # Install build tools
+      # --------------------
+      - name: Install prerequisites (Ubuntu)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libssl-dev
-          # install-qt-action can also install Qt runtime deps via apt when install-deps=true. 【1-0e753b】
 
-      - name: Install build prerequisites (macOS)
+      - name: Install prerequisites (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           brew update
           brew install ninja openssl@3
 
-      - name: Install build prerequisites (Windows)
+      - name: Install prerequisites (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           choco install ninja -y
+          ninja --version
 
-      # ---------- OpenSSL (Windows via vcpkg) ----------
-      # vcpkg-action provides a simple way to build/cache packages and an output
-      # string to pass to cmake to enable the vcpkg toolchain. 【3-cfbf9d】
+      # --------------------
+      # Windows: setup MSVC environment for Ninja builds
+      # --------------------
+      - name: Setup MSVC Dev Cmd (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # --------------------
+      # Windows: install OpenSSL via vcpkg (and ensure toolchain path exists)
+      # vcpkg-action clones vcpkg into ${{ github.workspace }}\vcpkg. 【4-928df3】
+      # --------------------
       - name: Install OpenSSL (Windows via vcpkg)
         if: runner.os == 'Windows'
-        id: vcpkg
         uses: johnwason/vcpkg-action@v7
         with:
           pkgs: "openssl"
           triplet: "x64-windows-release"
           token: ${{ github.token }}
 
-      # ---------- Install Qt ----------
-      # install-qt-action supports version, modules (including qtnetworkauth),
-      # linux dependency installation, and caching. 【1-0e753b】【2-a096da】
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          target: desktop
-          modules: "qtnetworkauth"
-          install-deps: true
-          cache: true
-
-      # ---------- Configure ----------
-      - name: Configure (Ubuntu/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          cmake -S . -B "${BUILD_DIR}" \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DQt6_ROOT="${QT_ROOT_DIR}" \
-            -DOPENSSL_ROOT_DIR="$(if [ '${{ runner.os }}' = 'macOS' ]; then brew --prefix openssl@3; else echo /usr; fi)"
-
-      - name: Configure (Windows)
+      - name: Verify vcpkg toolchain file (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # vcpkg-action provides vcpkg-cmake-config for toolchain/triplet settings. 【3-cfbf9d】
-          $vcpkgCmake = '${{ steps.vcpkg.outputs.vcpkg-cmake-config }}'
-          cmake $vcpkgCmake -S . -B "${env:BUILD_DIR}" -G Ninja `
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
-            -DQt6_ROOT="$env:QT_ROOT_DIR"
+          $toolchain = "${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+          if (!(Test-Path $toolchain)) {
+            Write-Error "Missing vcpkg toolchain file at: $toolchain"
+            exit 1
+          }
+          Write-Host "Found vcpkg toolchain: $toolchain"
 
-      # ---------- Build ----------
-      - name: Build
-        shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          cmake --build "${BUILD_DIR}" --config ${{ matrix.build_type }}
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cmake --build "${env:BUILD_DIR}" --config ${{ matrix.build_type }}
-
-      # ---------- Test ----------
-      - name: Test (ctest)
-        shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          ctest --test-dir "${BUILD_DIR}" --output-on-failure
-
-      - name: Test (ctest, Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ctest --test-dir "${env:BUILD_DIR}" --output-on-failure
-
-      # ---------- Upload artifacts ----------
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: onedrive-crypto-uploader-${{ matrix.os }}-${{ matrix.build_type }}
-          path: |
-            ${{ env.BUILD_DIR }}/onedrive_crypto_uploader*
-            ${{ env.BUILD_DIR }}/onedrive_crypto_uploader_tests*
-          if-no-files-found: warn
+      # --------------------
