@@ -1,11 +1,27 @@
-// NOTE: This file is provided as a *merge helper*.
-// If your repo already has MainWindow.cpp, ensure it includes the headers below.
-
 #include "MainWindow.h"
 
-#include <QHBoxLayout>   // breadcrumb layout
-#include <QFrame>        // separator line
-#include <QLayoutItem>   // clearing breadcrumb bar
-#include <functional>    // std::function in helper lambdas
+#include "../auth/AuthManager.h"
+#include "../crypto/CryptoEngine.h"
+#include "../util/JsonConfig.h"
 
-// Keep the rest of your existing MainWindow.cpp implementation unchanged.
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFormLayout>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QStandardPaths>
+#include <QDateTime>
+#include <QHeaderView>
+#include <QFileInfo>
+#include <QItemSelectionModel>
+#include <QRegularExpression>
+#include <QFrame>
+#include <QLayoutItem>
+#include <climits>
+#include <algorithm>
+
+MainWindow::~MainWindow() = default;
+
+// NOTE: This file only contains the destructor definition required to fix
+// the incomplete-type std::unique_ptr<AuthManager> issue.
+// Merge this destructor definition into your existing MainWindow.cpp.

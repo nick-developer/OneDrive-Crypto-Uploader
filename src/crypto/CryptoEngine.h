@@ -11,7 +11,7 @@ public:
   };
 
   static void encryptFile(const QString& inPath, const QString& outPath,
-                          const QString& passphrase, const Params& p = {});
+                          const QString& passphrase, const Params& p = Params{});
 
   static QString peekOriginalName(const QString& encryptedPath);
 

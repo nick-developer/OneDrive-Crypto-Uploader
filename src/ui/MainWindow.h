@@ -1,4 +1,5 @@
 #pragma once
+
 #include <QMainWindow>
 #include <QNetworkAccessManager>
 #include <memory>
@@ -14,16 +15,16 @@
 #include <QSortFilterProxyModel>
 #include <QToolButton>
 
-class QHBoxLayout; // forward declaration (pointer member)
-
 #include "../graph/GraphClient.h"
 
 class AuthManager;
+class QHBoxLayout;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
 public:
   explicit MainWindow(QWidget* parent = nullptr);
+  ~MainWindow() override; // out-of-line to avoid incomplete type issues
 
 private:
   void setupUi();
@@ -55,7 +56,6 @@ private:
   QPushButton* signInBtn_ = nullptr;
   QLabel* statusLbl_ = nullptr;
 
-  // OneDrive browser
   QWidget* breadcrumbBar_ = nullptr;
   QHBoxLayout* breadcrumbLayout_ = nullptr;
   QLineEdit* searchEdit_ = nullptr;
@@ -72,11 +72,10 @@ private:
   QSortFilterProxyModel* tableProxy_ = nullptr;
 
   QVector<Crumb> crumbs_;
-  QString currentFolderId_; // empty = root
+  QString currentFolderId_;
   QString currentFolderPath_ = "/";
   QString selectedFileId_;
 
-  // Encryption/upload
   QLineEdit* filePathEdit_ = nullptr;
   QPushButton* browseBtn_ = nullptr;
   QLineEdit* passEdit_ = nullptr;
@@ -84,7 +83,6 @@ private:
   QLineEdit* folderEdit_ = nullptr;
   QPushButton* encryptUploadBtn_ = nullptr;
 
-  // Download/decrypt
   QLineEdit* itemIdEdit_ = nullptr;
   QPushButton* downloadDecryptBtn_ = nullptr;
 

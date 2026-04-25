@@ -1,4 +1,5 @@
 #pragma once
+
 #include <QObject>
 #include <QOAuth2AuthorizationCodeFlow>
 #include <QOAuthHttpServerReplyHandler>
@@ -26,5 +27,5 @@ signals:
 
 private:
   QOAuth2AuthorizationCodeFlow oauth_;
-  QOAuthHttpServerReplyHandler replyHandler_;
+  QOAuthHttpServerReplyHandler* replyHandler_ = nullptr;
 };
