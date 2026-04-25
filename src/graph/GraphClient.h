@@ -3,6 +3,7 @@
 #include <QNetworkAccessManager>
 #include <QUrl>
 #include <QVector>
+#include <functional> // std::function
 
 class QFile;
 

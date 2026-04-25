@@ -14,6 +14,8 @@
 #include <QSortFilterProxyModel>
 #include <QToolButton>
 
+class QHBoxLayout; // forward declaration (pointer member)
+
 #include "../graph/GraphClient.h"
 
 class AuthManager;
