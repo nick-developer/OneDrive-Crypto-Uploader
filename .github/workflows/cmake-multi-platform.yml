@@ -85,3 +85,95 @@ jobs:
           Write-Host "Found vcpkg toolchain: $toolchain"
 
       # --------------------
+      # Install Qt
+      # install-qt-action sets QT_ROOT_DIR and adds Qt bin to PATH. 【2-220823】
+      # --------------------
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: desktop
+          modules: "qtnetworkauth"
+          install-deps: true
+          cache: true
+
+      - name: Debug Qt paths
+        shell: bash
+        run: |
+          echo "QT_ROOT_DIR=$QT_ROOT_DIR"
+          test -d "$QT_ROOT_DIR" || (echo "QT_ROOT_DIR does not exist!" && exit 1)
+
+      # --------------------
+      # Configure
+      # Tell CMake where Qt is (fixes Linux/macOS Qt6Config.cmake discovery). 【1-79338a】【2-220823】
+      # --------------------
+      - name: Configure (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          OPENSSL_ROOT=""
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            OPENSSL_ROOT="$(brew --prefix openssl@3)"
+          else
+            OPENSSL_ROOT="/usr"
+          fi
+
+          cmake -S . -B "${BUILD_DIR}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" \
+            -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6" \
+            -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT}"
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $toolchain = "${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+          cmake -S . -B "${env:BUILD_DIR}" -G Ninja `
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
+            -DQt6_DIR="$env:QT_ROOT_DIR\\lib\\cmake\\Qt6" `
+            -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
+            -DVCPKG_TARGET_TRIPLET="x64-windows-release"
+
+      # --------------------
+      # Build
+      # --------------------
+      - name: Build
+        shell: bash
+        if: runner.os != 'Windows'
+        run: |
+          cmake --build "${BUILD_DIR}" --config ${{ matrix.build_type }}
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake --build "${env:BUILD_DIR}" --config ${{ matrix.build_type }}
+
+      # --------------------
+      # Test
+      # --------------------
+      - name: Test (ctest)
+        shell: bash
+        if: runner.os != 'Windows'
+        run: |
+          ctest --test-dir "${BUILD_DIR}" --output-on-failure
+
+      - name: Test (ctest, Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ctest --test-dir "${env:BUILD_DIR}" --output-on-failure
+
+      # --------------------
+      # Upload artifacts
+      # --------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: onedrive-crypto-uploader-${{ matrix.os }}-${{ matrix.build_type }}
+          path: |
+            ${{ env.BUILD_DIR }}/onedrive_crypto_uploader*
+            ${{ env.BUILD_DIR }}/onedrive_crypto_uploader_tests*
+          if-no-files-found: warn
