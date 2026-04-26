@@ -1,4 +1,5 @@
 #include "OdencFormat.h"
+#include <QIODevice>
 #include <QDataStream>
 
 namespace odenc {
