@@ -11,7 +11,12 @@ public:
   };
 
   static void encryptFile(const QString& inPath, const QString& outPath,
-                          const QString& passphrase, const Params& p = Params{});
+                          const QString& passphrase, const Params& p);
+
+  // Convenience overload — uses default Params{}
+  static void encryptFile(const QString& inPath, const QString& outPath,
+                          const QString& passphrase)
+  { encryptFile(inPath, outPath, passphrase, Params{}); }
 
   static QString peekOriginalName(const QString& encryptedPath);
 
