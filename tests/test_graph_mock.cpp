@@ -6,7 +6,8 @@
 class MockReply : public QNetworkReply {
   Q_OBJECT
 public:
-  MockReply(const QNetworkRequest& req, const QByteArray& body, int status, QObject* parent=nullptr)
+  MockReply(const QNetworkRequest& req, const QByteArray& body, int status,
+            QObject* parent = nullptr)
     : QNetworkReply(parent), data_(body)
   {
     setRequest(req);
@@ -16,7 +17,10 @@ public:
   }
 
   void abort() override {}
-  qint64 bytesAvailable() const override { return data_.size() - offset_ + QIODevice::bytesAvailable(); }
+
+  qint64 bytesAvailable() const override {
+    return (data_.size() - offset_) + QIODevice::bytesAvailable();
+  }
 
 protected:
   qint64 readData(char* data, qint64 maxlen) override {
@@ -38,14 +42,15 @@ private:
 class MockNam : public QNetworkAccessManager {
   Q_OBJECT
 public:
-  QNetworkRequest lastReq;
+  // All requests in order — lets tests check the first (upload session) vs last (chunk PUT)
+  QList<QNetworkRequest> requests;
 
 protected:
   QNetworkReply* createRequest(Operation op, const QNetworkRequest& request,
                                QIODevice* outgoingData) override
   {
     Q_UNUSED(outgoingData);
-    lastReq = request;
+    requests.append(request);
     const QString url = request.url().toString();
 
     if (op == PostOperation && url.contains("createUploadSession")) {
@@ -96,15 +101,22 @@ void GraphMockTests::createUploadSession_requestHasGraphUrl() {
   QSignalSpy spyFail(&client, &GraphClient::failed);
 
   QTemporaryDir dir; QVERIFY(dir.isValid());
-  QString fp = dir.path() + "/a.bin";
+  const QString fp = dir.path() + "/a.bin";
   QFile f(fp); QVERIFY(f.open(QIODevice::WriteOnly)); f.write(QByteArray(1000, 'a')); f.close();
 
   client.uploadLargeFileToPath(fp, "/Apps/Test", "a.bin");
-  QTest::qWait(30);
+
+  // Wait for at least the upload-session POST to complete; 500 ms is generous.
+  QTRY_VERIFY_WITH_TIMEOUT(!nam.requests.isEmpty(), 500);
 
   QCOMPARE(spyFail.count(), 0);
-  QVERIFY(nam.lastReq.url().toString().contains("graph.microsoft.com"));
-  QVERIFY(nam.lastReq.url().toString().contains("createUploadSession"));
+
+  // The FIRST request must be the createUploadSession POST to graph.microsoft.com
+  const QString firstUrl = nam.requests.first().url().toString();
+  QVERIFY2(firstUrl.contains("graph.microsoft.com"),
+           qPrintable("Expected graph.microsoft.com, got: " + firstUrl));
+  QVERIFY2(firstUrl.contains("createUploadSession"),
+           qPrintable("Expected createUploadSession, got: " + firstUrl));
 }
 
 void GraphMockTests::listChildren_rootEmitsItems() {
