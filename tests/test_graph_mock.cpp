@@ -1,4 +1,5 @@
 #include <QtTest/QtTest>
+#include <QTimer>
 #include "../src/graph/GraphClient.h"
 #include <QNetworkReply>
 
@@ -15,19 +16,19 @@ public:
   }
 
   void abort() override {}
-  qint64 bytesAvailable() const override { return data_.size() + QIODevice::bytesAvailable(); }
+  qint64 bytesAvailable() const override { return data_.size() - offset_ + QIODevice::bytesAvailable(); }
 
 protected:
   qint64 readData(char* data, qint64 maxlen) override {
     const qint64 n = qMin<qint64>(maxlen, data_.size() - offset_);
     if (n <= 0) return -1;
-    memcpy(data, data_.constData() + offset_, n);
+    memcpy(data, data_.constData() + offset_, static_cast<size_t>(n));
     offset_ += n;
     return n;
   }
 
 private slots:
-  void finish(){ emit finished(); }
+  void finish() { emit finished(); }
 
 private:
   QByteArray data_;
@@ -40,13 +41,15 @@ public:
   QNetworkRequest lastReq;
 
 protected:
-  QNetworkReply* createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) override {
+  QNetworkReply* createRequest(Operation op, const QNetworkRequest& request,
+                               QIODevice* outgoingData) override
+  {
     Q_UNUSED(outgoingData);
     lastReq = request;
-    const auto url = request.url().toString();
+    const QString url = request.url().toString();
 
     if (op == PostOperation && url.contains("createUploadSession")) {
-      const QByteArray resp = R"({\"uploadUrl\":\"https://upload.example/session\"})";
+      const QByteArray resp = R"({"uploadUrl":"https://upload.example/session"})";
       return new MockReply(request, resp, 200, this);
     }
 
@@ -56,9 +59,9 @@ protected:
 
     if (op == GetOperation && url.contains("/me/drive/root/children")) {
       const QByteArray resp = R"({
-        \"value\": [
-          {\"id\":\"F1\",\"name\":\"FolderA\",\"folder\":{\"childCount\":1}},
-          {\"id\":\"X1\",\"name\":\"file.odenc\",\"file\":{},\"size\":123}
+        "value": [
+          {"id":"F1","name":"FolderA","folder":{"childCount":1}},
+          {"id":"X1","name":"file.odenc","file":{},"size":123}
         ]
       })";
       return new MockReply(request, resp, 200, this);
@@ -66,8 +69,8 @@ protected:
 
     if (op == GetOperation && url.contains("/me/drive/items/F1/children")) {
       const QByteArray resp = R"({
-        \"value\": [
-          {\"id\":\"X2\",\"name\":\"nested.odenc\",\"file\":{},\"size\":456}
+        "value": [
+          {"id":"X2","name":"nested.odenc","file":{},"size":456}
         ]
       })";
       return new MockReply(request, resp, 200, this);
@@ -94,7 +97,7 @@ void GraphMockTests::createUploadSession_requestHasGraphUrl() {
 
   QTemporaryDir dir; QVERIFY(dir.isValid());
   QString fp = dir.path() + "/a.bin";
-  QFile f(fp); QVERIFY(f.open(QIODevice::WriteOnly)); f.write(QByteArray(1000,'a')); f.close();
+  QFile f(fp); QVERIFY(f.open(QIODevice::WriteOnly)); f.write(QByteArray(1000, 'a')); f.close();
 
   client.uploadLargeFileToPath(fp, "/Apps/Test", "a.bin");
   QTest::qWait(30);
