@@ -19,157 +19,106 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        build_type: [Release]
+        include:
+          - os: ubuntu-latest
+            build_type: Release
+            qt_arch: gcc_64
+          - os: macos-latest
+            build_type: Release
+            qt_arch: clang_64
+          - os: windows-latest
+            build_type: Release
+            qt_arch: win64_msvc2022_64
 
     env:
-      QT_VERSION: "6.8.3"
+      # serverReportedErrorOccurred / setTokenUrl / setRequestedScopeTokens
+      # were introduced in Qt 6.9 — do not downgrade below 6.9.
+      QT_VERSION: "6.9.1"
       BUILD_DIR: build/${{ matrix.os }}-${{ matrix.build_type }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # --------------------
-      # Install build tools
-      # --------------------
-      - name: Install prerequisites (Ubuntu)
+      # ── Linux ──────────────────────────────────────────────────────────────
+      - name: Install prerequisites (Linux)
         if: runner.os == 'Linux'
-        shell: bash
         run: |
-          sudo apt-get update
+          sudo apt-get update -q
           sudo apt-get install -y ninja-build libssl-dev
 
+      # ── macOS ──────────────────────────────────────────────────────────────
       - name: Install prerequisites (macOS)
         if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          brew update
-          brew install ninja openssl@3
+        run: brew install ninja openssl@3
 
+      # ── Windows ────────────────────────────────────────────────────────────
       - name: Install prerequisites (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          choco install ninja -y
-          ninja --version
+        run: choco install ninja -y --no-progress
 
-      # --------------------
-      # Windows: setup MSVC environment for Ninja builds
-      # --------------------
-      - name: Setup MSVC Dev Cmd (Windows)
+      - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      # --------------------
-      # Windows: install OpenSSL via vcpkg (and ensure toolchain path exists)
-      # vcpkg-action clones vcpkg into ${{ github.workspace }}\vcpkg. 【4-928df3】
-      # --------------------
-      - name: Install OpenSSL (Windows via vcpkg)
+      - name: Install OpenSSL via vcpkg (Windows)
         if: runner.os == 'Windows'
         uses: johnwason/vcpkg-action@v7
         with:
-          pkgs: "openssl"
-          triplet: "x64-windows-release"
+          pkgs: openssl
+          triplet: x64-windows-release
           token: ${{ github.token }}
 
-      - name: Verify vcpkg toolchain file (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $toolchain = "${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
-          if (!(Test-Path $toolchain)) {
-            Write-Error "Missing vcpkg toolchain file at: $toolchain"
-            exit 1
-          }
-          Write-Host "Found vcpkg toolchain: $toolchain"
-
-      # --------------------
-      # Install Qt
-      # install-qt-action sets QT_ROOT_DIR and adds Qt bin to PATH. 【2-220823】
-      # --------------------
-      - name: Install Qt
+      # ── Qt (all platforms) ─────────────────────────────────────────────────
+      - name: Install Qt ${{ env.QT_VERSION }}
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           target: desktop
-          modules: "qtnetworkauth"
+          arch: ${{ matrix.qt_arch }}
+          modules: qtnetworkauth
           install-deps: true
           cache: true
 
-      - name: Debug Qt paths
-        shell: bash
-        run: |
-          echo "QT_ROOT_DIR=$QT_ROOT_DIR"
-          test -d "$QT_ROOT_DIR" || (echo "QT_ROOT_DIR does not exist!" && exit 1)
-
-      # --------------------
-      # Configure
-      # Tell CMake where Qt is (fixes Linux/macOS Qt6Config.cmake discovery). 【1-79338a】【2-220823】
-      # --------------------
-      - name: Configure (Ubuntu/macOS)
+      # ── Configure ──────────────────────────────────────────────────────────
+      - name: Configure (Linux/macOS)
         if: runner.os != 'Windows'
-        shell: bash
         run: |
-          OPENSSL_ROOT=""
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            OPENSSL_ROOT="$(brew --prefix openssl@3)"
-          else
-            OPENSSL_ROOT="/usr"
-          fi
-
-          cmake -S . -B "${BUILD_DIR}" -G Ninja \
+          OPENSSL_ROOT=$( [ "${{ runner.os }}" = "macOS" ] \
+            && brew --prefix openssl@3 \
+            || echo /usr )
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" \
-            -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6" \
-            -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT}"
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DQt6_DIR="$QT_ROOT_DIR/lib/cmake/Qt6" \
+            -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT"
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $toolchain = "${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
-          cmake -S . -B "${env:BUILD_DIR}" -G Ninja `
+          $toolchain = "${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake"
+          if (!(Test-Path $toolchain)) { throw "vcpkg toolchain not found: $toolchain" }
+          cmake -S . -B "$env:BUILD_DIR" -G Ninja `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
-            -DQt6_DIR="$env:QT_ROOT_DIR\\lib\\cmake\\Qt6" `
+            -DQt6_DIR="$env:QT_ROOT_DIR\lib\cmake\Qt6" `
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
             -DVCPKG_TARGET_TRIPLET="x64-windows-release"
 
-      # --------------------
-      # Build
-      # --------------------
+      # ── Build ──────────────────────────────────────────────────────────────
       - name: Build
         shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          cmake --build "${BUILD_DIR}" --config ${{ matrix.build_type }}
+        run: cmake --build "${{ env.BUILD_DIR }}" --config ${{ matrix.build_type }} -j
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cmake --build "${env:BUILD_DIR}" --config ${{ matrix.build_type }}
-
-      # --------------------
-      # Test
-      # --------------------
-      - name: Test (ctest)
+      # ── Test (upload only runs if this passes) ─────────────────────────────
+      - name: Test
         shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          ctest --test-dir "${BUILD_DIR}" --output-on-failure
+        run: ctest --test-dir "${{ env.BUILD_DIR }}" --output-on-failure
 
-      - name: Test (ctest, Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ctest --test-dir "${env:BUILD_DIR}" --output-on-failure
-
-      # --------------------
-      # Upload artifacts
-      # --------------------
+      # ── Artifacts ──────────────────────────────────────────────────────────
       - name: Upload artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: onedrive-crypto-uploader-${{ matrix.os }}-${{ matrix.build_type }}

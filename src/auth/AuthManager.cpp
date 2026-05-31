@@ -15,7 +15,7 @@ AuthManager::AuthManager(QObject* parent)
   connect(&oauth_, &QOAuth2AuthorizationCodeFlow::granted,
           this, &AuthManager::signedIn);
 
-  connect(&oauth_, &QOAuth2AuthorizationCodeFlow::error,
+  connect(&oauth_, &QOAuth2AuthorizationCodeFlow::serverReportedErrorOccurred,
           this, [this](const QString& error, const QString& desc, const QUrl&){
             emit authError(error + ": " + desc);
           });
@@ -42,8 +42,10 @@ void AuthManager::configure(const QString& clientId,
   const QUrl tokenUrl(QString("https://login.microsoftonline.com/%1/oauth2/v2.0/token").arg(tenant));
 
   oauth_.setAuthorizationUrl(authUrl);
-  oauth_.setAccessTokenUrl(tokenUrl);
-  oauth_.setScope(scopes.join(' '));
+  oauth_.setTokenUrl(tokenUrl);
+  QSet<QByteArray> scopeSet;
+  for (const QString& s : scopes) scopeSet.insert(s.toUtf8());
+  oauth_.setRequestedScopeTokens(scopeSet);
 
   oauth_.setModifyParametersFunction([](QAbstractOAuth::Stage stage, QMultiMap<QString, QVariant>* params) {
     if (stage == QAbstractOAuth::Stage::RequestingAuthorization) {
