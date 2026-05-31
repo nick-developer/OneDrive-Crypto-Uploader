@@ -51,6 +51,7 @@ if(ODCU_ENABLE_TESTS)
     tests/test_format.cpp
     tests/test_graph_mock.cpp
     tests/test_gui_smoke.cpp
+    tests/test_json_config.cpp
 
     src/auth/AuthManager.cpp
     src/auth/AuthManager.h

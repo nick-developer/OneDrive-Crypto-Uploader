@@ -152,10 +152,11 @@ void CryptoEngine::encryptFile(const QString& inPath, const QString& outPath,
   const QByteArray key = pbkdf2Key(passphrase, salt, p.pbkdf2Iterations, 32);
 
   odenc::Header h;
-  h.salt = salt;
+  h.salt          = salt;
   h.fileNonceBase = nonceBase;
-  h.chunkSize = p.chunkSize;
-  h.originalName = QFileInfo(in).fileName();
+  h.chunkSize     = p.chunkSize;
+  h.kdfRounds     = static_cast<std::uint32_t>(p.pbkdf2Iterations);
+  h.originalName  = QFileInfo(in).fileName();
 
   const QByteArray headerBytes = odenc::serializeHeader(h);
 
@@ -209,8 +210,7 @@ void CryptoEngine::decryptFile(const QString& inPath, const QString& outPath,
   if (!odenc::parseHeader(headerBytes, &h, &err))
     throw std::runtime_error(("Header parse error: " + err).toStdString());
 
-  const int iterations = 200000;
-  const QByteArray key = pbkdf2Key(passphrase, h.salt, iterations, 32);
+  const QByteArray key = pbkdf2Key(passphrase, h.salt, static_cast<int>(h.kdfRounds), 32);
 
   while (!ds.atEnd()) {
     quint32 chunkIndex = 0;

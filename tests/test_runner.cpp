@@ -4,6 +4,7 @@ int runCryptoTests(int argc, char** argv);
 int runFormatTests(int argc, char** argv);
 int runGraphMockTests(int argc, char** argv);
 int runGuiSmoke(int argc, char** argv);
+int runJsonConfigTests(int argc, char** argv);
 
 int main(int argc, char** argv) {
   // QApplication is required for widget construction in the GUI smoke test
@@ -15,5 +16,6 @@ int main(int argc, char** argv) {
   rc |= runFormatTests(argc, argv);
   rc |= runGraphMockTests(argc, argv);
   rc |= runGuiSmoke(argc, argv);
+  rc |= runJsonConfigTests(argc, argv);
   return rc;
 }

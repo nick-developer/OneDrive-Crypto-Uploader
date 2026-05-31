@@ -13,6 +13,7 @@ QByteArray serializeHeader(const Header& h) {
   ds << (quint16)h.version;
   ds << (quint8)h.kdf;
   ds << (quint32)h.chunkSize;
+  ds << (quint32)h.kdfRounds;
 
   ds << (quint16)h.salt.size();
   ds.writeRawData(h.salt.constData(), h.salt.size());
@@ -28,7 +29,8 @@ QByteArray serializeHeader(const Header& h) {
 }
 
 bool parseHeader(const QByteArray& bytes, Header* out, QString* err) {
-  if (bytes.size() < 6 + 2 + 1 + 4 + 2) {
+  // magic(6) + version(2) + kdf(1) + chunkSize(4) + kdfRounds(4) + at least saltLen(2)
+  if (bytes.size() < 6 + 2 + 1 + 4 + 4 + 2) {
     if (err) *err = "Header too small";
     return false;
   }
@@ -41,10 +43,11 @@ bool parseHeader(const QByteArray& bytes, Header* out, QString* err) {
     return false;
   }
 
-  quint16 ver; quint8 kdf; quint32 chunk;
-  ds >> ver >> kdf >> chunk;
+  quint16 ver; quint8 kdf; quint32 chunk; quint32 kdfRounds;
+  ds >> ver >> kdf >> chunk >> kdfRounds;
   if (ver != kVersion) { if (err) *err = "Unsupported version"; return false; }
   if (chunk == 0 || chunk > (64u * 1024u * 1024u)) { if (err) *err = "Invalid chunk size"; return false; }
+  if (kdfRounds == 0) { if (err) *err = "Invalid kdfRounds"; return false; }
 
   quint16 saltLen; ds >> saltLen;
   if (saltLen > 1024) { if (err) *err = "Salt too large"; return false; }
@@ -62,10 +65,11 @@ bool parseHeader(const QByteArray& bytes, Header* out, QString* err) {
   if (ds.readRawData(nameBytes.data(), nameLen) != nameLen) { if (err) *err = "Name truncated"; return false; }
 
   if (out) {
-    out->version = ver;
-    out->kdf = static_cast<KdfId>(kdf);
-    out->chunkSize = chunk;
-    out->salt = salt;
+    out->version      = ver;
+    out->kdf          = static_cast<KdfId>(kdf);
+    out->chunkSize    = chunk;
+    out->kdfRounds    = kdfRounds;
+    out->salt         = salt;
     out->fileNonceBase = nonceBase;
     out->originalName = QString::fromUtf8(nameBytes);
   }
